@@ -1,6 +1,6 @@
 # End-to-End Remote Sensing Change Detection (Uydu Görüntüleriyle Değişim Tespiti)
 
-Bu proje, aynı coğrafi alanın iki farklı zamanda çekilmiş bitemporal (**T1** ve **T2**) uydu görüntülerini karşılaştırarak kentsel alan ve bina değişimlerini piksel düzeyinde ikili maske (`0: Değişim Yok`, `1: Değişim Var`) olarak tespit eden uçtan uca derin öğrenme boru hattıdır.
+Bu proje, aynı coğrafi alanın iki farklı zamanda çekilmiş bitemporal (**T1** ve **T2**) uydu görüntülerini karşılaştırarak kentsel alan ve bina değişimlerini piksel düzeyinde ikili maske (`0: Değişim Yok`, `1: Değişim Var`) olarak tespit eden uçtan uca derin öğrenme çalismadir.
 
 ---
 
