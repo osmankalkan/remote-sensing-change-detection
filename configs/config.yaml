@@ -1,0 +1,53 @@
+# Remote Sensing Change Detection Configuration
+
+project:
+  name: "remote-sensing-change-detection"
+  seed: 42
+  experiment_name: "early_fusion_baseline"
+
+data:
+  raw_dir: "data/raw"
+  processed_dir: "data/processed"
+  train_split: "data/processed/train"
+  val_split: "data/processed/val"
+  test_split: "data/processed/test"
+  original_size: 1024
+  patch_size: 256
+  stride: 256
+  num_workers: 4
+  binary_threshold: 128  # Threshold for label binarization (0 or 255 -> 0 or 1)
+
+augmentation:
+  # Geometric augmentations (Synchronous across T1, T2, mask)
+  horizontal_flip_prob: 0.5
+  vertical_flip_prob: 0.5
+  random_rotate90_prob: 0.5
+  # Radiometric augmentations (Asynchronous, applied to T1 or T2 independently)
+  color_jitter_prob: 0.3
+  brightness_contrast_prob: 0.3
+  gaussian_noise_prob: 0.2
+
+model:
+  type: "baseline_early_fusion"  # Options: baseline_early_fusion, siamese_unet
+  encoder_name: "resnet18"
+  encoder_weights: "imagenet"
+  in_channels: 6                 # T1 (3ch) + T2 (3ch) concatenated
+  classes: 1                     # Binary change mask (0 or 1)
+
+training:
+  batch_size: 8
+  epochs: 30
+  lr: 0.0003
+  weight_decay: 0.0001
+  loss: "bce_dice"               # Options: bce, dice, focal, bce_dice, focal_dice
+  bce_weight: 0.5
+  dice_weight: 0.5
+  focal_gamma: 2.0
+  device: "auto"                 # Options: "auto", "mps", "cuda", "cpu"
+  mixed_precision: true
+  save_dir: "checkpoints"
+
+wandb:
+  enabled: false
+  project: "remote-sensing-change-detection"
+  entity: null
