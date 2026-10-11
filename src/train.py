@@ -1,7 +1,12 @@
 """Training and validation pipeline for Remote Sensing Change Detection."""
 import os
+import sys
 import argparse
 import time
+
+# Ensure project root is in sys.path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
 import torch
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
@@ -85,8 +90,31 @@ def validate(model, loader, criterion, device, is_early_fusion=True):
     return epoch_loss, scores, sample_to_visualize
 
 
-def run_training(config_path="configs/config.yaml"):
+def run_training(
+    config_path="configs/config.yaml",
+    save_dir=None,
+    epochs=None,
+    batch_size=None,
+    model_type=None,
+    device=None,
+    lr=None,
+):
     config = load_config(config_path)
+
+    # Apply command-line overrides if provided
+    if save_dir:
+        config["training"]["save_dir"] = save_dir
+    if epochs:
+        config["training"]["epochs"] = int(epochs)
+    if batch_size:
+        config["training"]["batch_size"] = int(batch_size)
+    if model_type:
+        config["model"]["type"] = model_type
+    if device:
+        config["training"]["device"] = device
+    if lr:
+        config["training"]["lr"] = float(lr)
+
     seed_everything(config["project"]["seed"])
 
     device = get_device(config["training"]["device"])
@@ -135,10 +163,13 @@ def run_training(config_path="configs/config.yaml"):
     # Output directory
     save_dir = t_cfg.get("save_dir", "checkpoints")
     os.makedirs(save_dir, exist_ok=True)
+    vis_dir = os.path.join(save_dir, "visualizations")
+    os.makedirs(vis_dir, exist_ok=True)
     best_iou = 0.0
 
     epochs = t_cfg["epochs"]
     print(f"\n[Training] Commencing training for {epochs} epochs...")
+    print(f"[Output] Checkpoints and logs will be saved to: {os.path.abspath(save_dir)}")
 
     for epoch in range(1, epochs + 1):
         t0 = time.time()
@@ -151,6 +182,19 @@ def run_training(config_path="configs/config.yaml"):
             f"Epoch [{epoch:02d}/{epochs:02d}] ({elapsed:.1f}s) | "
             f"Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f} | "
             f"Val F1: {val_scores['f1']:.4f} | Val IoU: {val_scores['iou']:.4f}"
+        )
+
+        # Save latest checkpoint
+        latest_path = os.path.join(save_dir, "latest_model.pth")
+        torch.save(
+            {
+                "epoch": epoch,
+                "model_state_dict": model.state_dict(),
+                "optimizer_state_dict": optimizer.state_dict(),
+                "val_scores": val_scores,
+                "config": config,
+            },
+            latest_path,
         )
 
         # Save best model
@@ -172,7 +216,7 @@ def run_training(config_path="configs/config.yaml"):
         # Save snapshot visualization
         if sample_vis is not None and epoch % 5 == 0:
             raw_t1, raw_t2, raw_gt, pred_p = sample_vis
-            vis_path = os.path.join("visualizations", f"epoch_{epoch:02d}_val_prediction.png")
+            vis_path = os.path.join(vis_dir, f"epoch_{epoch:02d}_val_prediction.png")
             visualize_change_detection(
                 raw_t1, raw_t2, raw_gt, pred_p,
                 title=f"Epoch {epoch} Prediction (IoU: {val_scores['iou']:.3f})",
@@ -180,13 +224,29 @@ def run_training(config_path="configs/config.yaml"):
             )
 
     print(f"\n[Finished] Training complete! Best Validation IoU: {best_iou:.4f}")
+    print(f"Final weights stored in: {os.path.join(save_dir, 'best_model.pth')}")
 
 
 def main():
     parser = argparse.ArgumentParser(description="Train Remote Sensing Change Detection Model")
     parser.add_argument("--config", type=str, default="configs/config.yaml", help="Path to config file")
+    parser.add_argument("--save_dir", type=str, default=None, help="Directory to save model checkpoints")
+    parser.add_argument("--epochs", type=int, default=None, help="Override number of training epochs")
+    parser.add_argument("--batch_size", type=int, default=None, help="Override batch size")
+    parser.add_argument("--model_type", type=str, default=None, help="Model architecture (baseline_early_fusion or siamese_unet)")
+    parser.add_argument("--device", type=str, default=None, help="Device to use (auto, cuda, mps, cpu)")
+    parser.add_argument("--lr", type=float, default=None, help="Learning rate override")
     args = parser.parse_args()
-    run_training(args.config)
+
+    run_training(
+        config_path=args.config,
+        save_dir=args.save_dir,
+        epochs=args.epochs,
+        batch_size=args.batch_size,
+        model_type=args.model_type,
+        device=args.device,
+        lr=args.lr,
+    )
 
 
 if __name__ == "__main__":

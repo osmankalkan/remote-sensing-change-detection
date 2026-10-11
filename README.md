@@ -41,7 +41,8 @@ remote-sensing-change-detection/
 │       └── test/  {A, B, label}
 ├── notebooks/
 │   ├── 01_eda.ipynb             # Keşifsel veri analizi ve sınıf dağılımları
-│   └── 02_error_analysis.ipynb  # Hata analizi ve model tahmin görselleştirmeleri
+│   ├── 02_error_analysis.ipynb  # Hata analizi ve model tahmin görselleştirmeleri
+│   └── colab_train.ipynb        # Google Colab T4 GPU + Google Drive eğitim defteri
 ├── scripts/
 │   ├── download_levir_cd.py     # LEVIR-CD veri seti indirme / örnek veri scripti
 │   ├── patch_images.py          # 1024x1024 -> 256x256 patch çıkarma (tiling) scripti
@@ -108,14 +109,26 @@ Model mimarisinin ve tensör akışının donanımınızda (Apple Silicon MPS, C
 python scripts/smoke_test_mps.py
 ```
 
-### 5. Modeli Eğitme
+### 5. Modeli Eğitme (Yerel)
 Yapılandırma dosyasındaki (`configs/config.yaml`) hiperparametrelerle eğitim döngüsünü başlatın:
 
 ```bash
 python src/train.py --config configs/config.yaml
 ```
 
-### 6. Büyük Görüntülerde Çıkarım (Seamless Sliding Window Inference)
+### 6. Bulutta Eğitim: Google Colab (T4 GPU + Google Drive)
+Google Colab'de ücretsiz T4 GPU kullanarak eğitmek ve ağırlıkları doğrudan Google Drive'a kaydetmek için hazırlanan hazır defteri kullanabilirsiniz:
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/osmankalkan/remote-sensing-change-detection/blob/main/notebooks/colab_train.ipynb)
+
+Bu notebook (`notebooks/colab_train.ipynb`):
+- Google Drive'ı bağlar (`/content/drive/MyDrive/remote_sensing_change_detection/`).
+- GitHub reposunu klonlar / günceller.
+- Gerekli kütüphaneleri otomatik yükler.
+- `src/train.py` eğitim scriptini `nohup` ile **arka planda** çalıştırır (tarayıcı kapansa bile eğitim devam eder).
+- En yüksek IoU skoruna sahip en iyi model ağırlıklarını (`best_model.pth`) doğrudan Google Drive'a kalıcı olarak kaydeder.
+
+### 7. Büyük Görüntülerde Çıkarım (Seamless Sliding Window Inference)
 Model 256x256 patch'ler üzerinde eğitilir. 1024x1024 tam boyutlu uydu görüntülerinde kenar kesme (seam) izlerini engellemek için Gaussian kernel ağırlıklı kayar pencere algoritması kullanılır:
 
 ```bash
