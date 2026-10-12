@@ -121,16 +121,17 @@ Google Colab'de ücretsiz T4 GPU kullanarak eğitmek ve ağırlıkları doğruda
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/osmankalkan/remote-sensing-change-detection/blob/main/notebooks/colab_train.ipynb)
 
-**Tek seferlik hazırlık:**
+**Tek seferlik hazırlık & çalıştırma:**
 1. `Çalışma zamanı → Çalışma zamanı türünü değiştir → T4 GPU`
-2. Sol menüde **🔑 Secrets** → `KAGGLE_API_TOKEN` adıyla Kaggle token'ını (`KGAT_...`) ekle ve **Not defteri erişimi**'ni aç. *(Token'ı asla notebook'a/koda yazma.)*
-3. `Çalışma zamanı → Tümünü çalıştır`
+2. `Çalışma zamanı → Tümünü çalıştır` (Run All)
+
+> 💡 **Veri seti için Kaggle token/hesabı zorunlu değildir!** Defter varsayılan olarak açık Hugging Face sunucusundan (`satellite-image-deep-learning/LEVIR-CD`) doğrudan indirir (403 hatası vermez, anında iner ve 256x256 patch'lere dilimler). İsteğe bağlı olarak Kaggle token'ı (`KAGGLE_API_TOKEN`) da kullanılabilir.
 
 Bu notebook (`notebooks/colab_train.ipynb`):
 - Tüm ayarları (model, encoder, epoch, batch size, LR, loss) tek bir form hücresinde toplar.
 - Google Drive'ı bağlar (`/content/drive/MyDrive/remote_sensing_change_detection/checkpoints/<model>_<encoder>/`); bağlanamazsa yerel diske düşer, hiçbir hücre çökmez.
 - GitHub reposunu klonlar / günceller, sadece eksik kütüphaneleri kurar (Colab'in PyTorch/NumPy sürümlerine dokunmaz).
-- LEVIR-CD-256'yı Kaggle'dan indirir; `scripts/prepare_kaggle_levir.py` ile her klasör yapısını `data/processed/{train,val,test}/{A,B,label}` düzenine getirir ve doğrular.
+- LEVIR-CD veri setini token gerektirmeden indirir; `scripts/prepare_kaggle_levir.py` ile veriyi otomatik algılar, gerekiyorsa 256x256 patch'lere dilimler ve `data/processed/{train,val,test}/{A,B,label}` yapısına yerleştirip doğrular.
 - `src/train.py`'yi **ayrı bir süreçte** çalıştırır (hücreyi durdurmak eğitimi durdurmaz), AMP (fp16) ile T4'te hızlandırır.
 - Colab bağlantısı koparsa tekrar **Run all** → `--resume` ile Drive'daki `latest_model.pth`'den kaldığı epoch'tan devam eder.
 - `best_model.pth`, `history.csv`, eğitim grafikleri, tahmin görselleri ve test metriklerini Drive'a kaydeder.
