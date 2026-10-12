@@ -121,12 +121,24 @@ Google Colab'de ücretsiz T4 GPU kullanarak eğitmek ve ağırlıkları doğruda
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/osmankalkan/remote-sensing-change-detection/blob/main/notebooks/colab_train.ipynb)
 
+**Tek seferlik hazırlık:**
+1. `Çalışma zamanı → Çalışma zamanı türünü değiştir → T4 GPU`
+2. Sol menüde **🔑 Secrets** → `KAGGLE_API_TOKEN` adıyla Kaggle token'ını (`KGAT_...`) ekle ve **Not defteri erişimi**'ni aç. *(Token'ı asla notebook'a/koda yazma.)*
+3. `Çalışma zamanı → Tümünü çalıştır`
+
 Bu notebook (`notebooks/colab_train.ipynb`):
-- Google Drive'ı bağlar (`/content/drive/MyDrive/remote_sensing_change_detection/`).
-- GitHub reposunu klonlar / günceller.
-- Gerekli kütüphaneleri otomatik yükler.
-- `src/train.py` eğitim scriptini `nohup` ile **arka planda** çalıştırır (tarayıcı kapansa bile eğitim devam eder).
-- En yüksek IoU skoruna sahip en iyi model ağırlıklarını (`best_model.pth`) doğrudan Google Drive'a kalıcı olarak kaydeder.
+- Tüm ayarları (model, encoder, epoch, batch size, LR, loss) tek bir form hücresinde toplar.
+- Google Drive'ı bağlar (`/content/drive/MyDrive/remote_sensing_change_detection/checkpoints/<model>_<encoder>/`); bağlanamazsa yerel diske düşer, hiçbir hücre çökmez.
+- GitHub reposunu klonlar / günceller, sadece eksik kütüphaneleri kurar (Colab'in PyTorch/NumPy sürümlerine dokunmaz).
+- LEVIR-CD-256'yı Kaggle'dan indirir; `scripts/prepare_kaggle_levir.py` ile her klasör yapısını `data/processed/{train,val,test}/{A,B,label}` düzenine getirir ve doğrular.
+- `src/train.py`'yi **ayrı bir süreçte** çalıştırır (hücreyi durdurmak eğitimi durdurmaz), AMP (fp16) ile T4'te hızlandırır.
+- Colab bağlantısı koparsa tekrar **Run all** → `--resume` ile Drive'daki `latest_model.pth`'den kaldığı epoch'tan devam eder.
+- `best_model.pth`, `history.csv`, eğitim grafikleri, tahmin görselleri ve test metriklerini Drive'a kaydeder.
+
+Yerelde de aynı şekilde devam ettirilebilir:
+```bash
+python src/train.py --config configs/config.yaml --resume
+```
 
 ### 7. Büyük Görüntülerde Çıkarım (Seamless Sliding Window Inference)
 Model 256x256 patch'ler üzerinde eğitilir. 1024x1024 tam boyutlu uydu görüntülerinde kenar kesme (seam) izlerini engellemek için Gaussian kernel ağırlıklı kayar pencere algoritması kullanılır:
