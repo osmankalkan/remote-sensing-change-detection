@@ -22,6 +22,7 @@ def _gauss_noise(p: float):
         return A.GaussNoise(std_range=(0.02, 0.1), p=p)
     except TypeError:
         # Legacy API: variance in absolute pixel units (std ~5-25 on a 0-255 scale)
+        # pyrefly: ignore [unexpected-keyword]
         return A.GaussNoise(var_limit=(25.0, 625.0), p=p)
 
 
