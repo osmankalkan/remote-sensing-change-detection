@@ -148,9 +148,40 @@ Model 256x256 patch'ler üzerinde eğitilir. 1024x1024 tam boyutlu uydu görünt
 python scripts/evaluate_large.py --t1 <T1_path> --t2 <T2_path> --checkpoint checkpoints/best_model.pth
 ```
 
-### 7. İnteraktif Web Arayüzü (Gradio)
+### 8. İnteraktif Web Arayüzü (Gradio)
 Görüntüleri sürükle-bırak yöntemiyle yükleyip değişim maskesini ve T2 üzerindeki görsel bindirmeyi (overlay) anlık incelemek için:
 
 ```bash
 python app.py
 ```
+
+---
+
+## 📊 Deneysel Sonuçlar ve Model Karşılaştırması
+
+### 1. Test Seti Performansı (2.048 Bitemporal Uydu Görüntüsü)
+Modelin eğitim ve doğrulama süreçlerinde **hiç görmediği** LEVIR-CD test seti üzerindeki nesnel başarım metrikleri:
+
+| Model Mimarisi | Backbone (Omurga) | Change-IoU (%) | F1-Score (%) | Precision (%) | Recall (%) | Overall Accuracy (%) |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Baseline Early Fusion** | ResNet18 | **79.64%** | **88.66%** | **89.65%** | **87.70%** | **98.86%** |
+| *Siamese U-Net + CBAM* | *ResNet34* | *Eğitim Aşaması* | *Eğitim Aşaması* | *Eğitim Aşaması* | *Eğitim Aşaması* | *Eğitim Aşaması* |
+
+---
+
+### 2. Başarılı Test Tahminleri (Kentsel ve Bina Değişimleri)
+Aşağıda, modelin test setinde farklı yapı yoğunluklarına sahip alanlardaki bina inşaatlarını piksel düzeyinde nasıl başarıyla tespit ettiği gösterilmektedir:
+
+![Baseline Test Examples](visualizations/baseline_test_examples.png)
+
+---
+
+### 3. Hata Analizi (Failure Case Analysis) ve Siamese Mimarisi Motivasyonu
+Derin öğrenme modellerinin güvenilirliği, yalnızca başarılarıyla değil, sınırlarının ve başarısızlık senaryolarının analiziyle anlaşılır:
+
+![Baseline Failure Case](visualizations/baseline_failure_case.png)
+
+* **Gözlem:** Kırsal arazide, kuru ot, ağaç gölgeleri ve toprak dokusuyla kamufle olmuş yapılarda (yukarıdaki test karesinde olduğu gibi), Baseline Early Fusion modeli değişimi yakalayamamıştır (*False Negative*).
+* **Kök Neden:** Early Fusion mimarisi T1 ve T2'yi tek bir 6 kanallı girdi olarak kaynaştırdığından zamansal farkı bağımsız ayrıştıramamakta; karmaşık arka plan dokularında binaları ayırt etmekte zorlanmaktadır.
+* **Çözüm:** Bu problem, T1 ve T2'yi çift dalda bağımsız işleyen, katman seviyesinde mutlak fark ($|f_1 - f_2|$) alan ve **CBAM (Kanal + Uzamsal Dikkat)** ile kamuflajı filtreleyen **Siamese U-Net** mimarisi ile çözümlenmektedir.
+
