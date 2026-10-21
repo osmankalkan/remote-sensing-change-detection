@@ -51,5 +51,10 @@ wandb/
 *.swo
 
 # Outputs & Visualizations
-outputs/
-visualizations/
+outputs/*
+!outputs/baseline_test_metrics.json
+!outputs/baseline_history.csv
+visualizations/*
+!visualizations/augmentation_verification.png
+!visualizations/baseline_test_examples.png
+!visualizations/baseline_failure_case.png
