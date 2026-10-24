@@ -1,214 +1,165 @@
-# 🛰️ Remote Sensing Change Detection (Uydu Görüntülerinde Değişim Tespiti)
+# Bitemporal Uydu Görüntülerinde Kentsel Değişim Tespiti
+### Remote Sensing Building Change Detection Pipeline
 
-Bu proje, aynı coğrafi alanın farklı zamanlarda çekilmiş (**T1** ve **T2** - öncesi ve sonrası) yüksek çözünürlüklü bitemporal uydu görüntülerini karşılaştırarak kentsel alan ve bina değişimlerini piksel düzeyinde ikili maske (`0: Değişim Yok`, `1: Değişim Var`) olarak tespit eden uçtan uca bir derin öğrenme (Deep Learning) pipeline'ıdır.
+Bu çalışma; farklı tarihlerde çekilmiş çift-zamanlı (bitemporal: $T_1$ ve $T_2$) yüksek çözünürlüklü optik uydu görüntüleri üzerinden piksel düzeyinde bina inşaatı ve kentsel değişim tespiti ($0$: Değişim Yok, $1$: Değişim Var) gerçekleştiren uçtan uca bir derin öğrenme sistemidir.
 
 ---
 
-## 🚀 Proje Mimarisi ve Teknik Tercihler
+## 1. Mimari Tasarım ve Karşılaştırmalı Yaklaşım
 
-### 1. Model Mimarileri
-- **Baseline Model (Early Fusion):**
-  - T1 ve T2 görüntüleri kanal bazında birleştirilerek (`[B, 6, H, W]`) modele beslenir.
-  - 6 kanallı girdi alacak şekilde uyarlanan `ResNet18` omurgalı U-Net mimarisi (`segmentation_models_pytorch`).
-- **Gelişmiş Model (Siamese U-Net / Late Fusion):**
-  - **Twin Encoder:** T1 ve T2 görüntüleri, ağırlıkları paylaşımlı (`shared-weights`) `ResNet34` omurgasından bağımsız dallar olarak geçer.
-  - **Feature Fusion:** Multi-scale skip connection seviyelerinde mutlak fark $|f_1 - f_2|$ ve kanal birleşimi $[f_1; f_2; |f_1 - f_2|]$ ile zengin değişim öznitelikleri çıkarılır.
-  - **CBAM Attention:** Mevsimsel ışık/ton farkları ile radyometrik gürültüleri filtreleyip bina sınırlarına ve gerçek yapısal değişimlere odaklanmak için kanal ve uzamsal dikkat modülü (Convolutional Block Attention Module) entegre edilmiştir.
+Proje kapsamında iki farklı mimari yaklaşım geliştirilmiş ve kıyaslanmıştır:
 
-### 2. Donanım ve Ortam Optimizasyonu
-- **Yerel Geliştirme (MacBook Air / Apple Silicon):** Apple Silicon Metal Performance Shaders (`torch.device("mps")`) üzerinde hızlı smoke testleri, veri hazırlığı / patch çıkarma (CPU + SSD optimizasyonu) ve Gradio demo arayüzü.
-- **Bulut Eğitimi (Colab / Kaggle / Cloud GPU):** 30–50 epoch'luk tam ölçekli eğitimler için mixed precision (`torch.amp`) ve CUDA hızlandırması.
+```text
+1. Early Fusion (Baseline):
+   [T1 (3ch)] + [T2 (3ch)] ──> Concatenation [6ch] ──> ResNet18 U-Net ──> Değişim Maskesi [1ch]
 
-### 3. Kayıp Fonksiyonları ve Değerlendirme Metrikleri
-- **Sınıf Dengesizliği (Class Imbalance) Çözümü:** Değişen binalar tüm uydu görüntüsünün genellikle yalnızca %3–5'lik küçük bir kısmını oluşturur. Bu dengesizliği aşmak için bileşik kayıp fonksiyonu kullanılır:
+2. Late Fusion & Attention (Siamese U-Net):
+   [T1 (3ch)] ──> Shared ResNet34 Encoder ──┐
+                                            ├──> Feature Fusion (|f1-f2| & Concat) ──> CBAM Attention ──> Decoder ──> Değişim Maskesi [1ch]
+   [T2 (3ch)] ──> Shared ResNet34 Encoder ──┘
+```
+
+### Mimari Detaylar:
+* **Baseline (Early Fusion U-Net):** Giriş seviyesinde kanal birleştirmesi ($6$ kanal) yapılarak standart ResNet18 omurgalı U-Net modeline beslenir. İki zaman dilimi arasındaki etkileşim ilk evrişim katmanından itibaren başlar.
+* **Siamese U-Net (Late Fusion + CBAM):**
+  * **Twin Encoder:** Ağırlıkları paylaşımlı (`shared-weights`) ikiz ResNet34 omurgası ile $T_1$ ve $T_2$ bağımsız dallarda işlenir.
+  * **Çok Ölçekli Füzyon (Feature Fusion):** Her skip-connection seviyesinde mutlak fark $|f_1 - f_2|$ ve kanal birleşimi $[f_1; f_2; |f_1 - f_2|]$ çıkarılır.
+  * **CBAM (Convolutional Block Attention Module):** Mevsimsel radyometrik kaymaları ve gürültüleri bastırmak, doğrudan yapısal bina sınırlarına odaklanmak amacıyla kanal ve uzamsal dikkat mekanizması uygulanır.
+
+---
+
+## 2. Eğitim Parametreleri ve Optimizasyon
+
+* **Sınıf Dengesizliği (Class Imbalance):** Değişen alanlar uydu görüntülerinin yalnızca %3–5'ini oluşturduğundan, standart Cross-Entropy yerine bileşik kayıp fonksiyonu kullanılmıştır:
   $$\mathcal{L}_{Total} = 0.5 \cdot \mathcal{L}_{BCE} + 0.5 \cdot \mathcal{L}_{Dice}$$
-  *(Ayrıca zor pikseller için Focal + Dice loss desteği mevcuttur).*
-- **Metrikler:** Precision, Recall, F1-Score ve Change-IoU (özellikle değişen pikseller üzerindeki IoU skoru).
+* **Öğrenme Oranı Çizelgesi:** `CosineAnnealingLR` ($3 \cdot 10^{-4} \to 10^{-6}$)
+* **Optimizasyon:** `AdamW` (Weight decay: $10^{-4}$)
+* **Donanım Hızlandırma:** Google Colab T4 GPU üzerinde `torch.amp` (FP16 Mixed Precision)
+* **Veri Standardizasyonu:** $1024 \times 1024$ ham LEVIR-CD görüntüleri, örtüşmesiz $256 \times 256$ piksellik yamalara (patch) ayrılarak eğitilmiştir.
 
 ---
 
-## 📁 Dizin Yapısı
+## 3. Deneysel Sonuçlar (LEVIR-CD Benchmark)
+
+Modelin eğitim ve doğrulama süreçlerinde yer almayan $2.048$ adet bitemporal test karesi ($134$ milyon piksel) üzerindeki başarım metrikleri:
+
+| Model | Omurga (Backbone) | Parametre | IoU (%) | F1-Score (%) | Precision (%) | Recall (%) | Overall Accuracy (%) |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Baseline Early Fusion** | ResNet18 | 14.3M | **79.64%** | **88.66%** | **89.65%** | **87.70%** | **98.86%** |
+| **Siamese U-Net + CBAM** | ResNet34 | 24.8M | **81.61%** | **89.88%** | **90.81%** | **88.96%** | **99.12%** |
+
+*Sonuçlar, Siamese U-Net mimarisinin özellikle çatı sınırlarının ayrıştırılmasında ve yanlış pozitiflerin (False Positive) elenmesinde Baseline modele göre **+1.97 puan IoU** ve **+1.22 puan F1-Score** net başarım artışı sağladığını doğrulamaktadır.*
+
+### Test Seti Çıkarımları:
+![Test Set Predictions](visualizations/baseline_test_examples.png)
+
+---
+
+## 4. Gerçek Dünya Dayanıklılık Testi ve Hata Analizi (Out-of-Distribution)
+
+Kapalı veri setinde elde edilen %81.61 IoU skorunun sahaya genelleşebilirliğini ölçmek amacıyla, Muğla Kötekli bölgesine ait 2014 ve 2025 yıllarını kapsayan bitemporal uydu görüntüleri üzerinde sıfır-atışlı (zero-shot) dayanıklılık testleri gerçekleştirilmiştir.
+
+### Vaka 1: Kötekli Yerleşim Alanı (Ölçek Uyuşmazlığı)
+2014 ve 2025 yılları arasında yeni konut bloklarının inşa edildiği kentsel parsel:
+
+| 2014 ($T_1$) | 2025 ($T_2$) |
+| :---: | :---: |
+| ![Kotekli 2014](visualizations/ood_kotekli_2014.jpg) | ![Kotekli 2025](visualizations/ood_kotekli_2025.jpg) |
+
+* **Sonuç:** Model bu geniş açılı görüntüde binaları yakalayamamış ve %0 değişim üretmiştir (*False Negative*).
+* **Teknik Neden:** Test görseli yaklaşık $1.5 \text{ km} \times 1.5 \text{ km}$'lik geniş bir alanı kapsamaktadır. Görüntü doğrudan $256 \times 256$'ya yeniden boyutlandırıldığında (resize), apartman blokları $10 \times 15$ piksele kadar küçülmüş; modelin $60 \times 60$ piksel ölçeğindeki evrişim filtrelerinin algı alanının (receptive field) altında kalmıştır.
+
+---
+
+### Vaka 2: Kötekli KYK Yurtları İnşaatı (Alan Kayması / Domain Shift)
+2014 yılında ormanlık boş arazi olan bölgeye 2025 yılında devasa yurt bloklarının inşa edildiği parsel:
+
+| 2014 ($T_1$ - Ormanlık Arazi) | 2025 ($T_2$ - Yurt Blokları) |
+| :---: | :---: |
+| ![KYK 2014](visualizations/ood_kyk_2014.jpg) | ![KYK 2025](visualizations/ood_kyk_2025.jpg) |
+
+* **Sonuç:** Model değişimi sezmiş ancak en yüksek güven skoru %16.4 seviyesinde kalarak standart %35 karar eşiğinin altında kalmıştır.
+* **Teknik Nedenler:**
+  1. **Spektral ve Radyometrik Alan Kayması (Domain Shift):** LEVIR-CD veri seti Amerikan/Çin banliyölerine özgü gri/antrasit shingle çatılarla eğitilmiştir. Türkiye/Akdeniz coğrafyasına özgü kırmızı/terakota kiremit çatılar ve kireçli sarı-beyaz hafriyat toprağı spektral açıdan modelin alışık olduğu dağılımın dışındadır (Out-of-Distribution).
+  2. **Sabit Karar Eşiği:** Model yurt bloklarının üzerindeki aktivasyonu artırmış (ısı haritasında tepe noktası oluşturmuş), ancak dağılım kayması nedeniyle aktivasyon genliği bastırılmıştır.
+
+---
+
+## 5. Mühendislik ve Araştırma Yol Haritası
+
+Tespit edilen zayıflıkları gidermek ve sistemi coğrafyadan bağımsız dayanıklı bir motora dönüştürmek için uygulanacak adımlar:
+
+### Adım 0: Kayan Pencere (Sliding Window & Gaussian Blending) Çıkarımı
+Büyük boyutlu haritalarda yeniden boyutlandırma kaynaklı bilgi kaybını engellemek amacıyla:
+* Girdi görüntüleri orijinal çözünürlüğünde korunarak $256 \times 256$ pencerelerle taranır.
+* Sınır süreksizliklerini (seam artifacts) engellemek için %50 örtüşme (`stride=128`) ve 2D Gaussian ağırlıklandırma ile harita pürüzsüz birleştirilir (stitching).
+
+### Adım 1: `src/datasets.py` Alan Kayması ve Radyometrik Augmentasyon
+Modelin tek bir çatı rengine veya sensör kalitesine bağımlı kalmasını önlemek için veri hattına eklenecek dönüşümler:
+* **Kiremit Çatı ve Işık Simülasyonu:** Renk tonu kaydırma (`HueSaturationValue` / `ColorJitter`), parlaklık ve kontrast dalgalanmaları.
+* **Sensör ve Sıkıştırma Bozulmaları:** Web haritalarındaki sıkıştırma artefaktlarını modellemek için `ImageCompression` (JPEG kalite düşürme), `GaussianBlur` ve `GaussNoise`.
+* **Ölçek Çeşitliliği:** Farklı uçuş yüksekliklerini simüle etmek için `RandomScale` ve `RandomResizedCrop`.
+
+### Adım 2: Çoklu Veri Seti Eğitimi ve Yerel İnce Ayar (Domain Adaptation)
+* **Çoklu Coğrafya:** LEVIR-CD'ye ek olarak **WHU-CD** (Yeni Zelanda) ve **SYSU-CD** (Hong Kong) veri setleri hatta entegre edilerek çatı ve doku çeşitliliği artırılacaktır.
+* **Yerel Adaptasyon:** Türkiye uydu görüntülerinden derlenecek mini veri paketi ile düşük öğrenme oranıyla ($5 \cdot 10^{-5}$) 15–20 epoch'luk ince ayar (fine-tuning) yapılacaktır.
+
+---
+
+## 6. Proje Yapısı
 
 ```text
 remote-sensing-change-detection/
 ├── configs/
-│   └── config.yaml              # Hiperparametreler, dosya yolları ve eğitim ayarları
+│   └── config.yaml              # Model, veri ve hiperparametre ayarları
 ├── data/
-│   ├── raw/                     # LEVIR-CD ham uydu görüntüleri (1024x1024)
-│   └── processed/               # 256x256 patch'lere ayrılmış veri seti (train/val/test)
-│       ├── train/ {A, B, label}
-│       ├── val/   {A, B, label}
-│       └── test/  {A, B, label}
+│   ├── raw/                     # Ham uydu görüntüleri (1024x1024)
+│   └── processed/               # 256x256 patch veri seti (train/val/test)
 ├── notebooks/
-│   ├── 01_eda.ipynb             # Keşifsel veri analizi ve sınıf dağılımları
-│   ├── 02_error_analysis.ipynb  # Hata analizi ve model tahmin görselleştirmeleri
-│   └── colab_train.ipynb        # Google Colab T4 GPU + Google Drive eğitim defteri
+│   ├── 01_eda.ipynb             # Keşifsel veri analizi
+│   ├── 02_error_analysis.ipynb  # Hata analizi
+│   └── colab_train.ipynb        # Colab GPU eğitim defteri
 ├── scripts/
-│   ├── download_levir_cd.py     # LEVIR-CD veri seti indirme / örnek veri scripti
-│   ├── patch_images.py          # 1024x1024 -> 256x256 patch çıkarma (tiling) scripti
-│   ├── prepare_sample_data.py   # Hızlı testler için sentetik bitemporal veri üreteci
-│   ├── verify_dataset.py        # Albumentations augmentasyon pipeline'ı doğrulama scripti
-│   ├── smoke_test_mps.py        # 1-batch MPS/CUDA forward & backward smoke testi
-│   └── evaluate_large.py        # 1024x1024 görüntüler için kesintisiz kayar pencere (sliding window) çıkarımı
+│   ├── download_levir_cd.py     # Veri seti indirme
+│   ├── patch_images.py          # 1024x1024 -> 256x256 yamalama
+│   └── evaluate_large.py        # Kayan pencere (Sliding Window) çıkarımı
 ├── src/
-│   ├── __init__.py
-│   ├── datasets.py              # Senkronize çiftli veri yükleyici (DualAugmentationDataset)
+│   ├── datasets.py              # Çiftli veri yükleyici ve augmentasyon
 │   ├── models/
-│   │   ├── __init__.py
-│   │   ├── baseline_unet.py     # 6 kanallı Early Fusion U-Net
-│   │   ├── siamese_unet.py      # Dual-branch Siamese U-Net
-│   │   └── attention.py         # CBAM (Channel & Spatial Attention) blokları
-│   ├── losses.py                # BCE, Dice, Focal ve Compound Loss fonksiyonları
-│   ├── metrics.py               # IoU ve F1-score hesaplayıcıları
-│   ├── utils.py                 # Cihaz seçimi (MPS/CUDA/CPU) ve görselleştirme araçları
-│   └── train.py                 # Eğitim ve doğrulama (train/val) döngüsü
-├── app.py                       # Gradio tabanlı interaktif web demosu
+│   │   ├── baseline_unet.py     # 6-kanallı Early Fusion U-Net
+│   │   ├── siamese_unet.py      # İkiz kollu Siamese U-Net
+│   │   └── attention.py         # CBAM kanal & uzamsal dikkat blokları
+│   ├── losses.py                # BCE, Dice ve Compound kayıp fonksiyonları
+│   ├── metrics.py               # IoU, F1, Precision, Recall hesaplayıcıları
+│   └── train.py                 # Eğitim ve doğrulama motoru
+├── visualizations/              # Test çıkarımları ve hata analizi görselleri
+├── app.py                       # Gradio interaktif web demosu
 ├── requirements.txt
 └── README.md
 ```
 
 ---
 
-## 🛠️ Kurulum ve Hızlı Başlangıç
+## 7. Kurulum ve Çalıştırma
 
-### 1. Ortam Kurulumu
-Gereksinimleri yüklemek için bir sanal ortam oluşturup aktifleştirin:
-
+### Ortam Kurulumu
 ```bash
-# Sanal ortamı oluşturun ve aktifleştirin
 python3 -m venv .venv
 source .venv/bin/activate
-
-# Bağımlılıkları yükleyin
 pip install -r requirements.txt
 ```
 
-### 2. Veri Hazırlığı ve Patching (256x256)
-Modeli test etmek için sentetik uydu çiftleri üretebilir veya gerçek LEVIR-CD veri setini `data/raw` klasörüne yerleştirebilirsiniz:
-
-```bash
-# Test amaçlı hızlı sentetik veri oluştur (veya gerçek LEVIR-CD'yi data/raw altına koy)
-python scripts/prepare_sample_data.py
-
-# 1024x1024 büyük görüntüleri 256x256 boyutlu patch'lere böl
-python scripts/patch_images.py --raw_dir data/raw --processed_dir data/processed --patch_size 256 --stride 256
-```
-
-### 3. Çiftli Veri Yükleyici ve Augmentasyon Kontrolü
-Geometrik dönüşümlerin (Flip, Rotate90) T1, T2 ve Değişim Maskesi arasında senkronize; fotometrik dönüşümlerin (parlaklık, kontrast, renk tonu) ise zamansal farkları simüle etmek için bağımsız uygulandığını görsel olarak doğrulamak için:
-
-```bash
-python scripts/verify_dataset.py
-```
-*Üretilen kontrol görseli `visualizations/augmentation_verification.png` dosyasına kaydedilir.*
-
-### 4. Donanım ve Pipeline Doğrulama (Smoke Test)
-Model mimarisinin ve tensör akışının donanımınızda (Apple Silicon MPS, CUDA veya CPU) sorunsuz çalıştığını 1 batch'lik forward/backward geçişiyle hızlıca teyit etmek için:
-
-```bash
-python scripts/smoke_test_mps.py
-```
-
-### 5. Modeli Eğitme (Yerel)
-Yapılandırma dosyasındaki (`configs/config.yaml`) hiperparametrelerle eğitim döngüsünü başlatın:
-
+### Model Eğitimi (Yerel / CUDA)
 ```bash
 python src/train.py --config configs/config.yaml
 ```
 
-### 6. Bulutta Eğitim: Google Colab (T4 GPU + Google Drive)
-Google Colab'de ücretsiz T4 GPU kullanarak eğitmek ve ağırlıkları doğrudan Google Drive'a kaydetmek için hazırlanan hazır defteri kullanabilirsiniz:
-
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/osmankalkan/remote-sensing-change-detection/blob/main/notebooks/colab_train.ipynb)
-
-**Tek seferlik hazırlık & çalıştırma:**
-1. `Çalışma zamanı → Çalışma zamanı türünü değiştir → T4 GPU`
-2. `Çalışma zamanı → Tümünü çalıştır` (Run All)
-
-> 💡 **Veri seti için Kaggle token/hesabı zorunlu değildir!** Defter varsayılan olarak açık Hugging Face sunucusundan (`satellite-image-deep-learning/LEVIR-CD`) doğrudan indirir (403 hatası vermez, anında iner ve 256x256 patch'lere dilimler). İsteğe bağlı olarak Kaggle token'ı (`KAGGLE_API_TOKEN`) da kullanılabilir.
-
-Bu notebook (`notebooks/colab_train.ipynb`):
-- Tüm ayarları (model, encoder, epoch, batch size, LR, loss) tek bir form hücresinde toplar.
-- Google Drive'ı bağlar (`/content/drive/MyDrive/remote_sensing_change_detection/checkpoints/<model>_<encoder>/`); bağlanamazsa yerel diske düşer, hiçbir hücre çökmez.
-- GitHub reposunu klonlar / günceller, sadece eksik kütüphaneleri kurar (Colab'in PyTorch/NumPy sürümlerine dokunmaz).
-- LEVIR-CD veri setini token gerektirmeden indirir; `scripts/prepare_kaggle_levir.py` ile veriyi otomatik algılar, gerekiyorsa 256x256 patch'lere dilimler ve `data/processed/{train,val,test}/{A,B,label}` yapısına yerleştirip doğrular.
-- `src/train.py`'yi **ayrı bir süreçte** çalıştırır (hücreyi durdurmak eğitimi durdurmaz), AMP (fp16) ile T4'te hızlandırır.
-- Colab bağlantısı koparsa tekrar **Run all** → `--resume` ile Drive'daki `latest_model.pth`'den kaldığı epoch'tan devam eder.
-- `best_model.pth`, `history.csv`, eğitim grafikleri, tahmin görselleri ve test metriklerini Drive'a kaydeder.
-
-Yerelde de aynı şekilde devam ettirilebilir:
+### Büyük Görüntülerde Çıkarım (Sliding Window)
 ```bash
-python src/train.py --config configs/config.yaml --resume
+python scripts/evaluate_large.py --t1 <T1_yolu> --t2 <T2_yolu> --checkpoint checkpoints/best_model.pth
 ```
 
-### 7. Büyük Görüntülerde Çıkarım (Seamless Sliding Window Inference)
-Model 256x256 patch'ler üzerinde eğitilir. 1024x1024 tam boyutlu uydu görüntülerinde kenar kesme (seam) izlerini engellemek için Gaussian kernel ağırlıklı kayar pencere algoritması kullanılır:
-
-```bash
-python scripts/evaluate_large.py --t1 <T1_path> --t2 <T2_path> --checkpoint checkpoints/best_model.pth
-```
-
-### 8. İnteraktif Web Arayüzü (Gradio)
-Görüntüleri sürükle-bırak yöntemiyle yükleyip değişim maskesini ve T2 üzerindeki görsel bindirmeyi (overlay) anlık incelemek için:
-
+### İnteraktif Web Arayüzü (Gradio)
 ```bash
 python app.py
 ```
-
----
-
-## 📊 Deneysel Sonuçlar ve Model Karşılaştırması
-
-### 1. Test Seti Performansı (2.048 Bitemporal Uydu Görüntüsü)
-Modelin eğitim ve doğrulama süreçlerinde **hiç görmediği** LEVIR-CD test seti üzerindeki nesnel başarım metrikleri:
-
-| Model Mimarisi | Backbone (Omurga) | Change-IoU (%) | F1-Score (%) | Precision (%) | Recall (%) | Overall Accuracy (%) |
-| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Baseline Early Fusion** | ResNet18 | **79.64%** | **88.66%** | **89.65%** | **87.70%** | **98.86%** |
-| **Siamese U-Net + CBAM** | ResNet34 | **81.61%** 🏆 | **89.88%** 🏆 | **90.81%** 🏆 | **88.96%** 🏆 | **99.12%** |
-
-*Doğrulama sonuçlarına göre Siamese U-Net + CBAM mimarisi, Baseline modele kıyasla **+1.97 puan IoU** ve **+1.22 puan F1-Score** net artış sağlamış; özellikle çatı sınırlarının ayrıştırılmasında ve sahte alarmların engellenmesinde belirgin üstünlük göstermiştir.*
-
----
-
-### 2. Başarılı Test Tahminleri (Kentsel ve Bina Değişimleri)
-Aşağıda, modelin test setinde farklı yapı yoğunluklarına sahip alanlardaki bina inşaatlarını piksel düzeyinde nasıl başarıyla tespit ettiği gösterilmektedir:
-
-![Baseline Test Examples](visualizations/baseline_test_examples.png)
-
----
-
-### 3. Hata Analizi (Failure Case Analysis) ve Siamese Mimarisi Motivasyonu
-Derin öğrenme modellerinin güvenilirliği, yalnızca başarılarıyla değil, sınırlarının ve başarısızlık senaryolarının analiziyle anlaşılır:
-
-![Baseline Failure Case](visualizations/baseline_failure_case.png)
-
-* **Gözlem:** Kırsal arazide, kuru ot, ağaç gölgeleri ve toprak dokusuyla kamufle olmuş yapılarda (yukarıdaki test karesinde olduğu gibi), Baseline Early Fusion modeli değişimi yakalayamamıştır (*False Negative*).
-* **Kök Neden:** Early Fusion mimarisi T1 ve T2'yi tek bir 6 kanallı girdi olarak kaynaştırdığından zamansal farkı bağımsız ayrıştıramamakta; karmaşık arka plan dokularında binaları ayırt etmekte zorlanmaktadır.
-* **Çözüm:** Bu problem, T1 ve T2'yi çift dalda bağımsız işleyen, katman seviyesinde mutlak fark ($|f_1 - f_2|$) alan ve **CBAM (Kanal + Uzamsal Dikkat)** ile kamuflajı filtreleyen **Siamese U-Net** mimarisi ile çözümlenmiştir.
-
----
-
-### 4. Gerçek Dünya Genelleştirme Analizi (Domain Gap / Out-of-Distribution)
-Modelin kapalı veri seti dışındaki gerçek dünya dayanıklılığını test etmek amacıyla, Muğla Kötekli bölgesine ait 2014 ve 2025 bitemporal uydu görüntüleri üzerinde sıfır-atışlı (Zero-Shot) çıkarım testleri yapılmıştır.
-
-* **Bulgular:** Model, laboratuvar test setinde %81.6 IoU başarısına ulaşmasına rağmen, gerçek dünyadaki farklı coğrafi dokularda (Akdeniz kiremit çatıları, kireçli toprak, kızılçam bitki örtüsü) güven skorunun düştüğü gözlemlenmiştir.
-* **Kök Nedenler:**
-  1. **Domain Shift (Radyometrik ve Spektral Farklılık):** LEVIR-CD veri setinin Amerikan/Çin banliyölerine özgü gri/siyah shingle çatılarla eğitilmiş olması; Akdeniz havzasındaki kiremit/terakota çatı dokusuyla spektral uyumsuzluk yaratmaktadır.
-  2. **GSD (Ground Sample Distance) ve Ölçek Uyuşmazlığı:** Model 0.5m/piksel çözünürlükteki yakın çekim karelerde eğitildiğinden, web haritalarından alınan geniş açılı görüntülerde binaların piksel alanı küçülmekte ve evrişim filtrelerinin algı alanının (receptive field) altında kalmaktadır.
-
----
-
-## 🔬 Araştırma Projesi Yol Haritası (Next Steps & Research Roadmap)
-
-Bu projenin bir sonraki aşamada endüstriyel ve akademik düzeyde "Her Coğrafyada Çalışan Evrensel Bir Değişim Tespit Sistemi"ne dönüştürülmesi için belirlenen stratejik adımlar:
-
-1. **Çoklu Veri Seti Eğitimi (Multi-Dataset Pre-training):**
-   * Yalnızca LEVIR-CD ile sınırlı kalmayıp; **WHU-CD** (Yeni Zelanda / deprem sonrası kentsel değişim), **SYSU-CD** (Hong Kong / yoğun kentsel kıyı dokusu) ve **S2Looking** (kırsal bina değişimleri) veri setleri birleştirilerek modelin coğrafi genelleştirme yeteneği artırılacaktır.
-2. **Yerel Alan Adaptasyonu (Domain Adaptation & Local Fine-Tuning):**
-   * Türkiye ve Akdeniz coğrafyasına özgü 100-200 adet bitemporal uydu görüntüsü toplanıp yarı-otomatik etiketleme (Pseudo-labeling) ile modele yerel kiremit ve arazi dokusu ince-ayar (fine-tune) edilecektir.
-3. **Yeni Nesil Mimari: Vision Transformers (ChangeFormer / BIT):**
-   * CNN tabanlı ResNet omurgalarının lokal algı alanını aşmak için, küresel zamansal bağlamı (global temporal context) modelleyen **Bitemporal Image Transformer (BIT)** veya **ChangeFormer** mimarilerine geçiş yapılacaktır.
-4. **Çok Ölçekli Çıkarım (Multi-Scale & Test-Time Augmentation - TTA):**
-   * Farklı zoom seviyelerindeki binaları yakalamak için çok ölçekli piramit çıkarımı (Multi-scale inference) entegre edilecektir.
-

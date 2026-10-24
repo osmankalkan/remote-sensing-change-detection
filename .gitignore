@@ -58,3 +58,8 @@ visualizations/*
 !visualizations/augmentation_verification.png
 !visualizations/baseline_test_examples.png
 !visualizations/baseline_failure_case.png
+!visualizations/siamese_epoch25_prediction.png
+!visualizations/ood_kotekli_2014.jpg
+!visualizations/ood_kotekli_2025.jpg
+!visualizations/ood_kyk_2014.jpg
+!visualizations/ood_kyk_2025.jpg
