@@ -66,6 +66,8 @@ Kapalı veri setinde elde edilen %81.61 IoU skorunun sahaya genelleşebilirliği
 | :---: | :---: |
 | ![Kotekli 2014](visualizations/ood_kotekli_2014.jpg) | ![Kotekli 2025](visualizations/ood_kotekli_2025.jpg) |
 
+![Kotekli Inference](visualizations/ood_kotekli_binary_mask_zero.png)
+
 * **Sonuç:** Model bu geniş açılı görüntüde binaları yakalayamamış ve %0 değişim üretmiştir (*False Negative*).
 * **Teknik Neden:** Test görseli yaklaşık $1.5 \text{ km} \times 1.5 \text{ km}$'lik geniş bir alanı kapsamaktadır. Görüntü doğrudan $256 \times 256$'ya yeniden boyutlandırıldığında (resize), apartman blokları $10 \times 15$ piksele kadar küçülmüş; modelin $60 \times 60$ piksel ölçeğindeki evrişim filtrelerinin algı alanının (receptive field) altında kalmıştır.
 
@@ -78,10 +80,12 @@ Kapalı veri setinde elde edilen %81.61 IoU skorunun sahaya genelleşebilirliği
 | :---: | :---: |
 | ![KYK 2014](visualizations/ood_kyk_2014.jpg) | ![KYK 2025](visualizations/ood_kyk_2025.jpg) |
 
+![KYK Heatmap Analysis](visualizations/ood_kyk_heatmap_analysis.png)
+
 * **Sonuç:** Model değişimi sezmiş ancak en yüksek güven skoru %16.4 seviyesinde kalarak standart %35 karar eşiğinin altında kalmıştır.
 * **Teknik Nedenler:**
   1. **Spektral ve Radyometrik Alan Kayması (Domain Shift):** LEVIR-CD veri seti Amerikan/Çin banliyölerine özgü gri/antrasit shingle çatılarla eğitilmiştir. Türkiye/Akdeniz coğrafyasına özgü kırmızı/terakota kiremit çatılar ve kireçli sarı-beyaz hafriyat toprağı spektral açıdan modelin alışık olduğu dağılımın dışındadır (Out-of-Distribution).
-  2. **Sabit Karar Eşiği:** Model yurt bloklarının üzerindeki aktivasyonu artırmış (ısı haritasında tepe noktası oluşturmuş), ancak dağılım kayması nedeniyle aktivasyon genliği bastırılmıştır.
+  2. **Isı Haritası Analizi:** Yukarıdaki ısı haritasında (3. panel) görüldüğü üzere model, yurt bloklarının üzerindeki aktivasyonu net bir tepe noktasıyla (%16.4) yakalamış; ancak renk ve doku yabancılığı nedeniyle aktivasyon genliği standart eşiğin altında kalmıştır. Eşik dinamik olarak ayarlandığında (4. panel) yurt bloklarının geometrisi belirginleşmektedir.
 
 ---
 
