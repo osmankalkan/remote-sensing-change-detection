@@ -165,7 +165,9 @@ Modelin eğitim ve doğrulama süreçlerinde **hiç görmediği** LEVIR-CD test 
 | Model Mimarisi | Backbone (Omurga) | Change-IoU (%) | F1-Score (%) | Precision (%) | Recall (%) | Overall Accuracy (%) |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
 | **Baseline Early Fusion** | ResNet18 | **79.64%** | **88.66%** | **89.65%** | **87.70%** | **98.86%** |
-| *Siamese U-Net + CBAM* | *ResNet34* | *Eğitim Aşaması* | *Eğitim Aşaması* | *Eğitim Aşaması* | *Eğitim Aşaması* | *Eğitim Aşaması* |
+| **Siamese U-Net + CBAM** | ResNet34 | **81.61%** 🏆 | **89.88%** 🏆 | **90.81%** 🏆 | **88.96%** 🏆 | **99.12%** |
+
+*Doğrulama sonuçlarına göre Siamese U-Net + CBAM mimarisi, Baseline modele kıyasla **+1.97 puan IoU** ve **+1.22 puan F1-Score** net artış sağlamış; özellikle çatı sınırlarının ayrıştırılmasında ve sahte alarmların engellenmesinde belirgin üstünlük göstermiştir.*
 
 ---
 
@@ -183,5 +185,30 @@ Derin öğrenme modellerinin güvenilirliği, yalnızca başarılarıyla değil,
 
 * **Gözlem:** Kırsal arazide, kuru ot, ağaç gölgeleri ve toprak dokusuyla kamufle olmuş yapılarda (yukarıdaki test karesinde olduğu gibi), Baseline Early Fusion modeli değişimi yakalayamamıştır (*False Negative*).
 * **Kök Neden:** Early Fusion mimarisi T1 ve T2'yi tek bir 6 kanallı girdi olarak kaynaştırdığından zamansal farkı bağımsız ayrıştıramamakta; karmaşık arka plan dokularında binaları ayırt etmekte zorlanmaktadır.
-* **Çözüm:** Bu problem, T1 ve T2'yi çift dalda bağımsız işleyen, katman seviyesinde mutlak fark ($|f_1 - f_2|$) alan ve **CBAM (Kanal + Uzamsal Dikkat)** ile kamuflajı filtreleyen **Siamese U-Net** mimarisi ile çözümlenmektedir.
+* **Çözüm:** Bu problem, T1 ve T2'yi çift dalda bağımsız işleyen, katman seviyesinde mutlak fark ($|f_1 - f_2|$) alan ve **CBAM (Kanal + Uzamsal Dikkat)** ile kamuflajı filtreleyen **Siamese U-Net** mimarisi ile çözümlenmiştir.
+
+---
+
+### 4. Gerçek Dünya Genelleştirme Analizi (Domain Gap / Out-of-Distribution)
+Modelin kapalı veri seti dışındaki gerçek dünya dayanıklılığını test etmek amacıyla, Muğla Kötekli bölgesine ait 2014 ve 2025 bitemporal uydu görüntüleri üzerinde sıfır-atışlı (Zero-Shot) çıkarım testleri yapılmıştır.
+
+* **Bulgular:** Model, laboratuvar test setinde %81.6 IoU başarısına ulaşmasına rağmen, gerçek dünyadaki farklı coğrafi dokularda (Akdeniz kiremit çatıları, kireçli toprak, kızılçam bitki örtüsü) güven skorunun düştüğü gözlemlenmiştir.
+* **Kök Nedenler:**
+  1. **Domain Shift (Radyometrik ve Spektral Farklılık):** LEVIR-CD veri setinin Amerikan/Çin banliyölerine özgü gri/siyah shingle çatılarla eğitilmiş olması; Akdeniz havzasındaki kiremit/terakota çatı dokusuyla spektral uyumsuzluk yaratmaktadır.
+  2. **GSD (Ground Sample Distance) ve Ölçek Uyuşmazlığı:** Model 0.5m/piksel çözünürlükteki yakın çekim karelerde eğitildiğinden, web haritalarından alınan geniş açılı görüntülerde binaların piksel alanı küçülmekte ve evrişim filtrelerinin algı alanının (receptive field) altında kalmaktadır.
+
+---
+
+## 🔬 Araştırma Projesi Yol Haritası (Next Steps & Research Roadmap)
+
+Bu projenin bir sonraki aşamada endüstriyel ve akademik düzeyde "Her Coğrafyada Çalışan Evrensel Bir Değişim Tespit Sistemi"ne dönüştürülmesi için belirlenen stratejik adımlar:
+
+1. **Çoklu Veri Seti Eğitimi (Multi-Dataset Pre-training):**
+   * Yalnızca LEVIR-CD ile sınırlı kalmayıp; **WHU-CD** (Yeni Zelanda / deprem sonrası kentsel değişim), **SYSU-CD** (Hong Kong / yoğun kentsel kıyı dokusu) ve **S2Looking** (kırsal bina değişimleri) veri setleri birleştirilerek modelin coğrafi genelleştirme yeteneği artırılacaktır.
+2. **Yerel Alan Adaptasyonu (Domain Adaptation & Local Fine-Tuning):**
+   * Türkiye ve Akdeniz coğrafyasına özgü 100-200 adet bitemporal uydu görüntüsü toplanıp yarı-otomatik etiketleme (Pseudo-labeling) ile modele yerel kiremit ve arazi dokusu ince-ayar (fine-tune) edilecektir.
+3. **Yeni Nesil Mimari: Vision Transformers (ChangeFormer / BIT):**
+   * CNN tabanlı ResNet omurgalarının lokal algı alanını aşmak için, küresel zamansal bağlamı (global temporal context) modelleyen **Bitemporal Image Transformer (BIT)** veya **ChangeFormer** mimarilerine geçiş yapılacaktır.
+4. **Çok Ölçekli Çıkarım (Multi-Scale & Test-Time Augmentation - TTA):**
+   * Farklı zoom seviyelerindeki binaları yakalamak için çok ölçekli piramit çıkarımı (Multi-scale inference) entegre edilecektir.
 
